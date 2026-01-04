@@ -1,0 +1,184 @@
+{
+  "summary": {
+    "total_tests": 29,
+    "passed_tests": 28,
+    "success_rate": 96.55172413793103,
+    "timestamp": "2026-01-04T14:55:42.331035"
+  },
+  "results": [
+    {
+      "test": "User Registration",
+      "success": false,
+      "details": "Status: 400, Expected: 200, Response: {'detail': 'Email already registered'}",
+      "timestamp": "2026-01-04T14:55:34.181043"
+    },
+    {
+      "test": "User Login",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.440991"
+    },
+    {
+      "test": "Get Current User",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.477122"
+    },
+    {
+      "test": "Get Dashboard Stats",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.557199"
+    },
+    {
+      "test": "Get Risk Trends",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.597102"
+    },
+    {
+      "test": "Get Risk Heatmap",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.633256"
+    },
+    {
+      "test": "Get All Regulations",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.673003"
+    },
+    {
+      "test": "Create Regulation",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.713232"
+    },
+    {
+      "test": "Get Specific Regulation",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.753522"
+    },
+    {
+      "test": "Search Regulations",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.793695"
+    },
+    {
+      "test": "Get All Controls",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.826356"
+    },
+    {
+      "test": "Create Control",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.864339"
+    },
+    {
+      "test": "Get All Incidents",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.902537"
+    },
+    {
+      "test": "Create Incident",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.935502"
+    },
+    {
+      "test": "Update Incident Status",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:34.971486"
+    },
+    {
+      "test": "Get All Alerts",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:35.046699"
+    },
+    {
+      "test": "Create Alert",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:35.084604"
+    },
+    {
+      "test": "Acknowledge Alert",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:35.160559"
+    },
+    {
+      "test": "Get Agent Tasks",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:35.199531"
+    },
+    {
+      "test": "Create Agent Task",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:35.249036"
+    },
+    {
+      "test": "Get Agent Activity",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:35.291304"
+    },
+    {
+      "test": "Chat Assistant",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:41.981163"
+    },
+    {
+      "test": "Get Evidence Packages",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:42.032563"
+    },
+    {
+      "test": "Generate Evidence Package",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:42.123569"
+    },
+    {
+      "test": "Get Evidence Package",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:42.165054"
+    },
+    {
+      "test": "Get Current Tenant",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:42.201643"
+    },
+    {
+      "test": "Get Monitoring Data",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:42.239686"
+    },
+    {
+      "test": "Ingest Monitoring Data",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:42.292210"
+    },
+    {
+      "test": "Get Documents",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2026-01-04T14:55:42.330056"
+    }
+  ]
+}
