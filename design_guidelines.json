@@ -1,0 +1,166 @@
+{
+  "identity": {
+    "name": "E1 - The Anti-AI Designer",
+    "mission": "Create a production-grade, dark-mode financial compliance platform that feels like a 'Control Room' for the future.",
+    "aesthetic": "Corporate Cyber-Minimalism. Deep blacks, precise borders, neon data accents, and glass-morphic overlays."
+  },
+  "typography": {
+    "fonts": {
+      "heading": {
+        "family": "Manrope",
+        "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap",
+        "usage": "All headings (h1-h6). Use weight 600+ for h1-h3. Use 'tracking-tight' for sizes over 24px."
+      },
+      "body": {
+        "family": "IBM Plex Sans",
+        "url": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&display=swap",
+        "usage": "Body text, paragraphs, inputs, and labels. Excellent legibility for dense data."
+      },
+      "mono": {
+        "family": "JetBrains Mono",
+        "url": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap",
+        "usage": "Transaction IDs, API keys, code snippets, and specific data values in tables."
+      }
+    },
+    "rules": [
+      "Never use 'Inter' for headings.",
+      "Headings must have 'tracking-tight'.",
+      "Overlines (small labels above titles) must be uppercase, 'text-xs', 'font-mono', and 'tracking-widest'."
+    ]
+  },
+  "colors": {
+    "palette": {
+      "background": {
+        "default": "#09090b",
+        "paper": "#121214",
+        "subtle": "#18181b"
+      },
+      "primary": {
+        "main": "#3b82f6",
+        "hover": "#2563eb",
+        "description": "Trust Blue - Use for primary actions, active states, and compliance indicators."
+      },
+      "accent": {
+        "main": "#8b5cf6",
+        "glow": "0 0 20px rgba(139, 92, 246, 0.5)",
+        "description": "Agent Violet - Use strictly for AI Agent related elements (nodes, chat, automation status)."
+      },
+      "status": {
+        "success": "#10b981",
+        "warning": "#f59e0b",
+        "error": "#ef4444",
+        "info": "#0ea5e9"
+      },
+      "border": {
+        "default": "#27272a",
+        "active": "#3f3f46"
+      }
+    },
+    "gradients": {
+      "hero": "linear-gradient(to bottom right, #09090b, #1e1b4b)",
+      "glass": "linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%)"
+    }
+  },
+  "layout": {
+    "spacing": {
+      "container_padding": "p-6 md:p-8 lg:p-12",
+      "section_gap": "gap-8",
+      "component_gap": "gap-4"
+    },
+    "grids": {
+      "dashboard": "grid grid-cols-1 md:grid-cols-12 gap-6",
+      "bento_spans": {
+        "hero": "col-span-12 md:col-span-8 lg:col-span-9",
+        "sidebar": "col-span-12 md:col-span-4 lg:col-span-3",
+        "stat_card": "col-span-12 md:col-span-6 lg:col-span-3",
+        "full_row": "col-span-12"
+      }
+    },
+    "surfaces": {
+      "card": "bg-card border border-border/50 shadow-sm hover:border-primary/30 transition-colors duration-300",
+      "glass_panel": "backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl",
+      "sidebar": "bg-background border-r border-border/40"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-all",
+      "secondary": "rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80",
+      "ghost": "rounded-md hover:bg-accent hover:text-accent-foreground",
+      "outline": "rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+    },
+    "inputs": {
+      "default": "bg-background border-input focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all rounded-md"
+    },
+    "cards": {
+      "default": "rounded-lg border bg-card text-card-foreground shadow-sm"
+    },
+    "charts": {
+      "library": "recharts",
+      "style": "Use 'recharts' with custom tooltips. Tooltips must be styled as 'bg-black/90 border border-white/10 text-xs'. Axis lines should be '#3f3f46'."
+    },
+    "agent_graph": {
+      "library": "@xyflow/react",
+      "style": "Nodes should be custom components using Tailwind. Edges should be animated SVGs."
+    }
+  },
+  "visual_enhancers": {
+    "textures": {
+      "noise": "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E\")"
+    },
+    "effects": {
+      "glow": "shadow-[0_0_20px_rgba(var(--primary),0.3)]",
+      "glass": "backdrop-blur-md bg-white/5 border border-white/10"
+    }
+  },
+  "assets": {
+    "images": {
+      "login_bg": {
+        "url": "https://images.pexels.com/photos/3573383/pexels-photo-3573383.jpeg",
+        "alt": "Financial District Night Skyline",
+        "usage": "Background for Login/Register pages with a heavy dark overlay (bg-black/80)."
+      },
+      "dashboard_hero": {
+        "url": "https://images.pexels.com/photos/11167645/pexels-photo-11167645.jpeg",
+        "alt": "Abstract Digital Security Shield",
+        "usage": "Hero section background or subtle texture in the 'Compliance Score' card."
+      },
+      "server_room": {
+        "url": "https://images.pexels.com/photos/17323801/pexels-photo-17323801.jpeg",
+        "alt": "Dark Server Room",
+        "usage": "Background for 'Infrastructure Monitoring' or 'Data Sources' section."
+      }
+    },
+    "icons": {
+      "library": "lucide-react",
+      "style": "Stroke width 1.5px. Size 16px for UI, 24px for navigation."
+    }
+  },
+  "libraries": {
+    "required": [
+      "framer-motion",
+      "recharts",
+      "@xyflow/react",
+      "clsx",
+      "tailwind-merge",
+      "lucide-react"
+    ],
+    "installation_command": "yarn add framer-motion recharts @xyflow/react clsx tailwind-merge lucide-react"
+  },
+  "instructions_to_main_agent": [
+    "1. INSTALLATION: Run the installation command immediately to ensure all design dependencies are present.",
+    "2. FONTS: Add the Google Fonts links to the <head> of public/index.html immediately.",
+    "3. THEME: Ensure 'dark' class is applied to the html/body tag by default. The app is Dark Mode ONLY.",
+    "4. LAYOUT: Use the 'Bento Grid' strategy for the Dashboard. Do not create a simple list of cards. Mix sizes (col-span-1, col-span-2, row-span-2).",
+    "5. AGENT VIEW: Create a dedicated 'AgentOrchestration' component using @xyflow/react. It should look like a circuit board.",
+    "6. CHARTS: Use Recharts for the Risk Heatmap and Compliance Trends. Style them to match the dark theme (no white backgrounds).",
+    "7. GLASSMORPHISM: Use the 'glass_panel' class defined in layout.surfaces for the Sidebar and Floating Action Buttons.",
+    "8. DATA-TESTID: Every interactive element (buttons, inputs, cards) MUST have a data-testid attribute (e.g., 'login-submit-btn', 'compliance-score-card')."
+  ],
+  "universal_guidelines": [
+    "Avoid 'AI Slop': Do not use generic centered layouts.",
+    "Micro-interactions: Add hover states to everything. Use framer-motion for page transitions.",
+    "Density: This is a pro tool. Use dense data displays, but keep it readable with generous padding inside containers.",
+    "No Gradients on Text: Keep text solid white or gray for readability. Use gradients on borders or backgrounds only."
+  ]
+}
