@@ -97,10 +97,10 @@ const Agents = () => {
     }));
 
     const agentEdges = [
-      { id: 'e1', source: 'regulatory_discovery', target: 'policy_mapping', animated: true },
-      { id: 'e2', source: 'policy_mapping', target: 'monitoring_risk', animated: true },
-      { id: 'e3', source: 'monitoring_risk', target: 'evidence_reporting', animated: true },
-      { id: 'e4', source: 'regulatory_discovery', target: 'monitoring_risk', animated: false },
+      { id: 'e1', source: 'regulatory_discovery', target: 'policy_mapping', animated: true, type: 'default' },
+      { id: 'e2', source: 'policy_mapping', target: 'monitoring_risk', animated: true, type: 'default' },
+      { id: 'e3', source: 'monitoring_risk', target: 'evidence_reporting', animated: true, type: 'default' },
+      { id: 'e4', source: 'regulatory_discovery', target: 'monitoring_risk', animated: false, type: 'default' },
     ];
 
     setNodes(agentNodes);
