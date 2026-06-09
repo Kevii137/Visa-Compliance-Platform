@@ -1,18 +1,20 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  Shield, 
-  LayoutDashboard, 
-  BookOpen, 
-  AlertTriangle, 
-  FileText, 
-  MessageSquare, 
-  Settings, 
+import {
+  Shield,
+  LayoutDashboard,
+  BookOpen,
+  AlertTriangle,
+  FileText,
+  MessageSquare,
+  Settings,
   LogOut,
   Bot,
   Activity,
-  Bell
+  Bell,
+  Scale,
+  Brain
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
@@ -27,6 +29,8 @@ const navItems = [
   { icon: AlertTriangle, label: 'Incidents', path: '/incidents' },
   { icon: Bell, label: 'Alerts', path: '/alerts' },
   { icon: Bot, label: 'Agents', path: '/agents' },
+  { icon: Scale, label: 'Conflicts', path: '/conflicts' },
+  { icon: Brain, label: 'Insights', path: '/insights' },
   { icon: MessageSquare, label: 'Assistant', path: '/assistant' },
   { icon: FileText, label: 'Evidence', path: '/evidence' },
 ];

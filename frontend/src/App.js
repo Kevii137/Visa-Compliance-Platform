@@ -17,6 +17,8 @@ import Agents from "./pages/Agents";
 import Assistant from "./pages/Assistant";
 import Evidence from "./pages/Evidence";
 import Settings from "./pages/Settings";
+import Conflicts from "./pages/Conflicts";
+import Insights from "./pages/Insights";
 
 // Layout
 import Layout from "./components/Layout";
@@ -90,6 +92,8 @@ function AppRoutes() {
         <Route path="agents" element={<Agents />} />
         <Route path="assistant" element={<Assistant />} />
         <Route path="evidence" element={<Evidence />} />
+        <Route path="conflicts" element={<Conflicts />} />
+        <Route path="insights" element={<Insights />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       

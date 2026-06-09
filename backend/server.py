@@ -5,6 +5,8 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import json
+import re
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from typing import List, Optional, Dict, Any
@@ -17,10 +19,31 @@ from enum import Enum
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# MongoDB connection — fall back to in-memory mongomock when real MongoDB is unreachable
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+db_name = os.environ.get('DB_NAME', 'compliance_db')
+
+def _make_client():
+    import socket
+    host = mongo_url.split('//')[1].split('/')[0].split(':')[0]
+    port = int(mongo_url.split(':')[-1].split('/')[0]) if ':' in mongo_url.split('//')[1] else 27017
+    s = socket.socket()
+    s.settimeout(0.5)
+    try:
+        s.connect((host, port))
+        s.close()
+        return AsyncIOMotorClient(mongo_url), False
+    except Exception:
+        s.close()
+        try:
+            from mongomock_motor import AsyncMongoMockClient
+            logging.getLogger(__name__).warning("MongoDB unreachable — using in-memory mongomock (data resets on restart)")
+            return AsyncMongoMockClient(), True
+        except ImportError:
+            raise RuntimeError("MongoDB is not running and mongomock-motor is not installed. Run: pip install mongomock-motor")
+
+client, _USING_MOCK_DB = _make_client()
+db = client[db_name]
 
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default-secret')
@@ -221,6 +244,10 @@ class ChatResponse(BaseModel):
     response: str
     sources: List[Dict[str, Any]]
     suggested_actions: List[str]
+
+class HITLDecision(BaseModel):
+    decision: str  # "approve" or "deny"
+    reason: Optional[str] = None
 
 class ComplianceScore(BaseModel):
     framework: str
@@ -572,6 +599,33 @@ async def get_agent_activity(current_user: dict = Depends(get_current_user)):
     ).sort("timestamp", -1).to_list(50)
     return {"activities": activities}
 
+@api_router.put("/agents/tasks/{task_id}/hitl")
+async def hitl_decision(task_id: str, decision: HITLDecision, current_user: dict = Depends(get_current_user)):
+    """Human-in-the-loop approval for high-risk agent actions"""
+    task = await db.agent_tasks.find_one(
+        {"id": task_id, "tenant_id": current_user["tenant_id"]}, {"_id": 0}
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    new_status = "approved" if decision.decision == "approve" else "denied"
+    await db.agent_tasks.update_one(
+        {"id": task_id},
+        {"$set": {
+            "status": new_status,
+            "hitl_decision": decision.decision,
+            "hitl_reason": decision.reason,
+            "hitl_by": current_user["user_id"],
+            "hitl_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    await log_activity(
+        current_user["tenant_id"],
+        "hitl_decision",
+        f"Task {task_id[:8]} {new_status} by reviewer: {decision.reason or 'No reason given'}"
+    )
+    return {"message": f"Task {new_status}", "task_id": task_id}
+
 # ============ MONITORING DATA ROUTES ============
 @api_router.post("/monitoring/ingest")
 async def ingest_monitoring_data(data: dict, current_user: dict = Depends(get_current_user)):
@@ -738,6 +792,256 @@ async def get_evidence_package(package_id: str, current_user: dict = Depends(get
         raise HTTPException(status_code=404, detail="Package not found")
     return package
 
+# ============ REGULATORY CONFLICTS ROUTES ============
+@api_router.post("/regulations/analyze-conflicts")
+async def analyze_regulatory_conflicts(current_user: dict = Depends(get_current_user)):
+    """AI-powered detection of conflicting obligations across regulations"""
+    regulations = await db.regulations.find(
+        {"tenant_id": current_user["tenant_id"]}, {"_id": 0}
+    ).to_list(20)
+
+    if len(regulations) < 2:
+        return {"conflicts": [], "total_conflicts": 0, "analysis_summary": "Add more regulations to detect conflicts."}
+
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="LLM API key not configured")
+
+    system_msg = """You are an expert regulatory conflict analyzer for financial services compliance.
+Analyze provided regulations and identify conflicting obligations.
+
+Return ONLY valid JSON (no markdown):
+{
+  "conflicts": [
+    {
+      "id": "C001",
+      "regulation_1": "regulation name",
+      "framework_1": "PCI_DSS|GDPR|CCPA|LGPD|AML_KYC",
+      "regulation_2": "regulation name",
+      "framework_2": "PCI_DSS|GDPR|CCPA|LGPD|AML_KYC",
+      "conflict_type": "direct_contradiction|overlap|ambiguity",
+      "description": "clear conflict description",
+      "example": "concrete real-world example",
+      "resolution": "recommended harmonized approach",
+      "jurisdiction_winner": "which regulation takes precedence and why",
+      "action_required": "specific action for compliance team",
+      "severity": "low|medium|high|critical"
+    }
+  ],
+  "total_conflicts": 0,
+  "critical_conflicts": 0,
+  "analysis_summary": "brief overall summary"
+}"""
+
+    reg_list = [{"name": r["name"], "framework": r["framework"], "description": r["description"]} for r in regulations]
+    user_msg = f"""Identify ALL conflicting obligations between these regulations:
+
+{json.dumps(reg_list, indent=2)}
+
+Focus on: GDPR vs AML/KYC data retention, CCPA vs financial record-keeping, cross-jurisdiction conflicts.
+Return only valid JSON."""
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"conflicts-{current_user['tenant_id']}-{datetime.now().timestamp()}",
+            system_message=system_msg
+        ).with_model("gemini", "gemini-3-flash-preview")
+        response_text = await chat.send_message(UserMessage(text=user_msg))
+        result = extract_json_from_text(response_text)
+        await db.conflict_analyses.update_one(
+            {"tenant_id": current_user["tenant_id"]},
+            {"$set": {"tenant_id": current_user["tenant_id"], "result": result, "analyzed_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Conflict analysis error: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+@api_router.get("/regulations/conflicts")
+async def get_cached_conflicts(current_user: dict = Depends(get_current_user)):
+    """Get cached conflict analysis results"""
+    cached = await db.conflict_analyses.find_one({"tenant_id": current_user["tenant_id"]}, {"_id": 0})
+    if not cached:
+        return {"conflicts": [], "total_conflicts": 0, "analysis_summary": "No analysis run yet. Use the Analyze button."}
+    return cached["result"]
+
+@api_router.post("/regulations/{regulation_id}/decompose")
+async def decompose_regulation(regulation_id: str, current_user: dict = Depends(get_current_user)):
+    """Decompose a regulation into atomic machine-readable requirements"""
+    regulation = await db.regulations.find_one(
+        {"id": regulation_id, "tenant_id": current_user["tenant_id"]}, {"_id": 0}
+    )
+    if not regulation:
+        raise HTTPException(status_code=404, detail="Regulation not found")
+
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="LLM API key not configured")
+
+    system_msg = """You are a regulatory requirements analyst.
+Decompose regulations into atomic, machine-readable requirements (single testable obligations).
+
+Return ONLY valid JSON (no markdown):
+{
+  "regulation_name": "string",
+  "framework": "string",
+  "atomic_requirements": [
+    {
+      "id": "REQ-001",
+      "action": "what must be done (verb phrase)",
+      "object": "what it applies to",
+      "condition": "when/how it applies",
+      "priority": "critical|high|medium|low",
+      "data_types_affected": ["list of data types"],
+      "verification_method": "how to verify compliance",
+      "related_controls": ["suggested control names"]
+    }
+  ],
+  "total_requirements": 0,
+  "critical_count": 0
+}"""
+
+    user_msg = f"""Decompose this regulation into 6-10 atomic requirements:
+
+Name: {regulation['name']}
+Framework: {regulation['framework']}
+Description: {regulation['description']}
+Sections: {json.dumps(regulation.get('sections', []))}
+
+Return valid JSON only."""
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"decompose-{regulation_id}-{datetime.now().timestamp()}",
+            system_message=system_msg
+        ).with_model("gemini", "gemini-3-flash-preview")
+        response_text = await chat.send_message(UserMessage(text=user_msg))
+        result = extract_json_from_text(response_text)
+        await db.atomic_requirements.update_one(
+            {"regulation_id": regulation_id, "tenant_id": current_user["tenant_id"]},
+            {"$set": {"regulation_id": regulation_id, "tenant_id": current_user["tenant_id"], "result": result, "analyzed_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Decomposition error: {e}")
+        raise HTTPException(status_code=500, detail=f"Decomposition failed: {str(e)}")
+
+@api_router.get("/regulations/{regulation_id}/atomic-requirements")
+async def get_atomic_requirements(regulation_id: str, current_user: dict = Depends(get_current_user)):
+    """Get cached atomic requirements for a regulation"""
+    cached = await db.atomic_requirements.find_one(
+        {"regulation_id": regulation_id, "tenant_id": current_user["tenant_id"]}, {"_id": 0}
+    )
+    if not cached:
+        return {"atomic_requirements": [], "total_requirements": 0, "message": "Not analyzed yet."}
+    return cached["result"]
+
+# ============ PREDICTIVE INSIGHTS ROUTES ============
+@api_router.get("/insights")
+async def get_predictive_insights(refresh: bool = False, current_user: dict = Depends(get_current_user)):
+    """AI-generated predictive compliance insights"""
+    tenant_id = current_user["tenant_id"]
+
+    if not refresh:
+        cached = await db.insights_cache.find_one({"tenant_id": tenant_id}, {"_id": 0})
+        if cached:
+            try:
+                analyzed_at = datetime.fromisoformat(cached["analyzed_at"].replace('Z', '+00:00'))
+                if (datetime.now(timezone.utc) - analyzed_at).seconds < 3600:
+                    return cached["result"]
+            except Exception:
+                pass
+
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        return _mock_insights()
+
+    incidents = await db.incidents.find({"tenant_id": tenant_id}, {"_id": 0}).to_list(20)
+    alerts = await db.alerts.find({"tenant_id": tenant_id, "acknowledged": False}, {"_id": 0}).to_list(20)
+    controls = await db.controls.find({"tenant_id": tenant_id}, {"_id": 0, "name": 1, "effectiveness": 1, "framework": 1, "status": 1}).to_list(30)
+
+    system_msg = """You are a predictive compliance intelligence system for financial services.
+Analyze compliance posture and provide predictive insights.
+
+Return ONLY valid JSON (no markdown):
+{
+  "risk_prediction": {
+    "overall_trend": "improving|declining|stable",
+    "predicted_score_next_30_days": 0,
+    "confidence": 0,
+    "key_drivers": []
+  },
+  "behavioral_insights": [
+    {"type": "pre_crime|pattern|anomaly", "description": "insight", "risk_level": "low|medium|high|critical", "recommended_action": "action"}
+  ],
+  "systemic_risks": [
+    {"risk": "description", "affected_frameworks": [], "probability": "low|medium|high", "impact": "low|medium|high|critical"}
+  ],
+  "quick_wins": [],
+  "priority_actions": [
+    {"action": "string", "impact": "high|medium|low", "effort": "high|medium|low", "framework": "string"}
+  ],
+  "three_specialist_signals": {
+    "financial": {"risk_level": "low|medium|high|critical", "signals": [], "top_finding": "string"},
+    "behavioral": {"risk_level": "low|medium|high|critical", "signals": [], "top_finding": "string"},
+    "operational": {"risk_level": "low|medium|high|critical", "signals": [], "top_finding": "string"}
+  }
+}"""
+
+    user_msg = f"""Generate predictive insights based on current compliance state:
+
+Incidents ({len(incidents)}): {json.dumps([{k: v for k, v in i.items() if k in ['title','severity','framework','status']} for i in incidents[:10]])}
+Active Alerts ({len(alerts)}): {json.dumps([{k: v for k, v in a.items() if k in ['title','severity','source']} for a in alerts[:10]])}
+Controls: {json.dumps([{k: v for k, v in c.items() if k in ['name','effectiveness','framework','status']} for c in controls[:15]])}
+
+Provide actionable predictive insights. Return valid JSON only."""
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"insights-{tenant_id}-{datetime.now().timestamp()}",
+            system_message=system_msg
+        ).with_model("gemini", "gemini-3-flash-preview")
+        response_text = await chat.send_message(UserMessage(text=user_msg))
+        result = extract_json_from_text(response_text)
+        await db.insights_cache.update_one(
+            {"tenant_id": tenant_id},
+            {"$set": {"tenant_id": tenant_id, "result": result, "analyzed_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Insights error: {e}")
+        return _mock_insights()
+
+def _mock_insights():
+    return {
+        "risk_prediction": {"overall_trend": "improving", "predicted_score_next_30_days": 84.5, "confidence": 72, "key_drivers": ["PCI DSS controls improving", "GDPR incidents declining", "New AML monitoring active"]},
+        "behavioral_insights": [
+            {"type": "pattern", "description": "Spike in GDPR data export requests detected this week", "risk_level": "medium", "recommended_action": "Review data portability workflow and response timelines"},
+            {"type": "anomaly", "description": "Access control effectiveness dropped 8% below threshold", "risk_level": "high", "recommended_action": "Audit access permissions immediately across Card Processing team"}
+        ],
+        "systemic_risks": [{"risk": "Outdated PCI DSS controls may not satisfy v4.0 requirements effective March 2025", "affected_frameworks": ["PCI_DSS"], "probability": "medium", "impact": "high"}],
+        "quick_wins": ["Enable MFA for all admin accounts", "Complete pending GDPR data mapping", "Update privacy notices for CCPA compliance"],
+        "priority_actions": [
+            {"action": "Complete PCI DSS v4.0 gap assessment", "impact": "high", "effort": "medium", "framework": "PCI_DSS"},
+            {"action": "Resolve 3 open GDPR access requests past SLA", "impact": "high", "effort": "low", "framework": "GDPR"},
+            {"action": "Update AML transaction monitoring thresholds", "impact": "medium", "effort": "medium", "framework": "AML_KYC"}
+        ],
+        "three_specialist_signals": {
+            "financial": {"risk_level": "medium", "signals": ["High-value transactions > $10K pending review", "2 flagged wash-pattern sequences"], "top_finding": "Multiple suspicious transaction patterns detected requiring AML review"},
+            "behavioral": {"risk_level": "low", "signals": ["No insider trading signals detected", "Normal communication patterns"], "top_finding": "Behavioral risk within acceptable parameters"},
+            "operational": {"risk_level": "high", "signals": ["Failed login spike from 3 IPs", "Data export volume 40% above baseline"], "top_finding": "Unusual data access patterns require immediate investigation"}
+        }
+    }
+
 # ============ DOCUMENT UPLOAD ROUTES ============
 @api_router.post("/documents/upload")
 async def upload_document(file: UploadFile = File(...), framework: str = "PCI_DSS", current_user: dict = Depends(get_current_user)):
@@ -771,6 +1075,16 @@ async def get_documents(current_user: dict = Depends(get_current_user)):
     return {"documents": docs}
 
 # ============ HELPER FUNCTIONS ============
+def extract_json_from_text(text: str) -> dict:
+    """Extract JSON from LLM response that may include markdown fences"""
+    match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', text)
+    if match:
+        return json.loads(match.group(1))
+    match = re.search(r'\{[\s\S]*\}', text)
+    if match:
+        return json.loads(match.group(0))
+    raise ValueError("No JSON found in LLM response")
+
 async def log_activity(tenant_id: str, activity_type: str, description: str):
     activity = {
         "id": str(uuid.uuid4()),
@@ -782,37 +1096,155 @@ async def log_activity(tenant_id: str, activity_type: str, description: str):
     await db.activities.insert_one(activity)
 
 async def process_agent_task(task_id: str, tenant_id: str):
-    """Background task to process agent tasks"""
-    import asyncio
-    await asyncio.sleep(2)  # Simulate processing
-    
+    """AI-powered background agent task processing"""
     task = await db.agent_tasks.find_one({"id": task_id}, {"_id": 0})
     if not task:
         return
-    
-    result = {
-        "status": "completed",
-        "findings": ["Sample finding 1", "Sample finding 2"],
-        "recommendations": ["Implement additional controls", "Review access policies"]
-    }
-    
+
+    await db.agent_tasks.update_one({"id": task_id}, {"$set": {"status": "in_progress"}})
+
+    agent_type = task["agent_type"]
+    description = task["description"]
+
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+
+    try:
+        regulations = await db.regulations.find({"tenant_id": tenant_id}, {"_id": 0, "name": 1, "framework": 1, "description": 1, "version": 1}).to_list(20)
+        controls = await db.controls.find({"tenant_id": tenant_id}, {"_id": 0, "name": 1, "framework": 1, "status": 1, "effectiveness": 1}).to_list(30)
+        incidents = await db.incidents.find({"tenant_id": tenant_id, "status": {"$ne": "closed"}}, {"_id": 0, "title": 1, "severity": 1, "framework": 1, "description": 1}).to_list(10)
+        alerts = await db.alerts.find({"tenant_id": tenant_id, "acknowledged": False}, {"_id": 0, "title": 1, "severity": 1, "source": 1}).to_list(10)
+
+        if agent_type == "regulatory_discovery":
+            system_msg = """You are the Regulatory Discovery (Ingestor) Agent in a PCI/PII compliance platform.
+Role: Monitor and discover regulatory changes, new requirements, and compliance obligations.
+Return ONLY valid JSON:
+{
+  "findings": ["list of discovered items"],
+  "recommendations": ["list of urgent actions"],
+  "regulatory_updates": [{"regulation": "name", "change": "description", "impact": "low|medium|high", "effective_date": "string"}],
+  "priority_actions": ["urgent action 1", "urgent action 2"],
+  "gaps_identified": [{"framework": "string", "gap": "description", "severity": "low|medium|high|critical"}],
+  "confidence_score": 0
+}"""
+            user_msg = f"""Task: {description}
+
+Regulatory context:
+Regulations in system: {json.dumps([{k: v for k, v in r.items() if k in ['name','framework','description','version']} for r in regulations[:5]])}
+Open Incidents: {json.dumps([{k: v for k, v in i.items() if k in ['title','severity','framework']} for i in incidents[:5]])}
+
+Analyze for regulatory discovery findings. Return valid JSON."""
+
+        elif agent_type == "policy_mapping":
+            system_msg = """You are the Policy Mapping (Interpreter) Agent in a PCI/PII compliance platform.
+Role: Map regulations to internal controls, calculate confidence scores, identify policy gaps.
+Return ONLY valid JSON:
+{
+  "findings": ["mapping result 1", "mapping result 2"],
+  "recommendations": ["improvement 1"],
+  "mappings": [{"regulation": "name", "control": "name", "confidence": 0, "status": "mapped|gap|partial", "notes": "string"}],
+  "gaps": [{"framework": "string", "gap_description": "string", "severity": "low|medium|high|critical", "affected_control": "string"}],
+  "confidence_score": 0,
+  "overall_mapping_coverage": 0
+}"""
+            user_msg = f"""Task: {description}
+
+Regulations: {json.dumps([{k: v for k, v in r.items() if k in ['name','framework','description']} for r in regulations[:8]])}
+Controls: {json.dumps([{k: v for k, v in c.items() if k in ['name','framework','status','effectiveness']} for c in controls[:12]])}
+
+Map regulations to controls, score confidence, identify gaps. Return valid JSON."""
+
+        elif agent_type == "monitoring_risk":
+            system_msg = """You are the Monitoring & Risk (Auditor) Agent in a PCI/PII compliance platform.
+You operate as three specialists:
+- Financial: Detects transaction anomalies, wash transactions, smurfing
+- Behavioral: Semantic analysis for insider trading, collusion, compliance risks
+- Operations: System/access log anomalies, unauthorized access, data exfiltration
+
+Return ONLY valid JSON:
+{
+  "findings": ["risk signal 1", "risk signal 2"],
+  "recommendations": ["mitigation 1"],
+  "risk_signals": [{"type": "financial|behavioral|operational", "signal": "description", "severity": "low|medium|high|critical", "evidence": "string"}],
+  "cross_domain_correlations": [{"signals": ["s1","s2"], "combined_risk": "description", "severity": "string"}],
+  "predictions": ["predicted future risk 1"],
+  "confidence_score": 0
+}"""
+            user_msg = f"""Task: {description}
+
+Current incidents: {json.dumps([{k: v for k, v in i.items() if k in ['title','severity','framework','description']} for i in incidents[:6]])}
+Active alerts: {json.dumps([{k: v for k, v in a.items() if k in ['title','severity','source']} for a in alerts[:6]])}
+Controls: {json.dumps([{k: v for k, v in c.items() if k in ['name','effectiveness','framework']} for c in controls[:5]])}
+
+Analyze risk posture across financial, behavioral, and operational domains. Return valid JSON."""
+
+        elif agent_type == "evidence_reporting":
+            system_msg = """You are the Evidence & Reporting (Remediation Planner) Agent in a PCI/PII compliance platform.
+Role: Assess evidence quality, identify audit gaps, generate remediation plans.
+Return ONLY valid JSON:
+{
+  "findings": ["evidence finding 1"],
+  "recommendations": ["remediation step 1"],
+  "evidence_quality_score": 0,
+  "gaps": [{"control": "name", "gap": "description", "severity": "low|medium|high|critical", "remediation": "specific action", "effort": "low|medium|high"}],
+  "strengths": [{"area": "name", "description": "what is working well"}],
+  "audit_readiness": "low|medium|high",
+  "remediation_plan": [{"step": 1, "action": "string", "priority": "string", "timeline": "string"}],
+  "confidence_score": 0
+}"""
+            user_msg = f"""Task: {description}
+
+Controls assessment: {json.dumps([{k: v for k, v in c.items() if k in ['name','effectiveness','framework','status']} for c in controls[:12]])}
+Regulations: {json.dumps([{k: v for k, v in r.items() if k in ['name','framework']} for r in regulations[:5]])}
+Open incidents: {json.dumps([{k: v for k, v in i.items() if k in ['title','severity','framework']} for i in incidents[:5]])}
+
+Generate comprehensive evidence assessment and remediation plan. Return valid JSON."""
+
+        else:
+            system_msg = "You are a compliance analysis agent. Analyze the given task and return findings as valid JSON with keys: findings, recommendations, confidence_score."
+            user_msg = f"Task: {description}\nReturn JSON only."
+
+        if api_key:
+            from emergentintegrations.llm.chat import LlmChat, UserMessage
+            chat = LlmChat(
+                api_key=api_key,
+                session_id=f"agent-{task_id}",
+                system_message=system_msg
+            ).with_model("gemini", "gemini-3-flash-preview")
+            response_text = await chat.send_message(UserMessage(text=user_msg))
+            try:
+                result = extract_json_from_text(response_text)
+            except (json.JSONDecodeError, ValueError):
+                result = {"findings": [response_text[:400]], "recommendations": ["Review raw agent output"], "confidence_score": 40}
+        else:
+            result = {
+                "findings": [f"[Demo] Completed {agent_type.replace('_',' ')} analysis for: {description}"],
+                "recommendations": ["Configure LLM API key for real AI analysis"],
+                "confidence_score": 0
+            }
+
+        result["agent_type"] = agent_type
+        result["task_description"] = description
+
+    except Exception as e:
+        logger.error(f"Agent task error: {e}")
+        result = {"findings": ["Processing error occurred"], "recommendations": ["Check system configuration"], "error": str(e), "confidence_score": 0}
+
     await db.agent_tasks.update_one(
         {"id": task_id},
-        {"$set": {
-            "status": "completed",
-            "result": result,
-            "completed_at": datetime.now(timezone.utc).isoformat()
-        }}
+        {"$set": {"status": "completed", "result": result, "completed_at": datetime.now(timezone.utc).isoformat()}}
     )
-    
-    # Log agent activity
+
+    findings_count = len(result.get("findings", []))
+    rec_count = len(result.get("recommendations", []))
     await db.agent_activities.insert_one({
         "id": str(uuid.uuid4()),
         "tenant_id": tenant_id,
-        "agent_type": task["agent_type"],
-        "action": f"Completed task: {task['description']}",
+        "agent_type": agent_type,
+        "action": f"Completed: {description[:60]}",
+        "result_summary": f"{findings_count} findings, {rec_count} recommendations",
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
+    await log_activity(tenant_id, "agent_task_completed", f"{agent_type.replace('_',' ').title()} agent: {description[:60]}")
 
 async def analyze_monitoring_data(tenant_id: str, records: List[dict]):
     """Analyze monitoring data for anomalies"""
@@ -835,28 +1267,68 @@ async def analyze_monitoring_data(tenant_id: str, records: List[dict]):
             await db.alerts.insert_one(alert)
 
 async def generate_evidence_package_async(package_id: str, tenant_id: str, framework: str):
-    """Generate evidence package asynchronously"""
-    import asyncio
-    await asyncio.sleep(3)  # Simulate generation
-    
+    """AI-powered evidence package generation"""
     controls = await db.controls.find({"tenant_id": tenant_id, "framework": framework}, {"_id": 0}).to_list(50)
-    
-    evidence = []
-    for control in controls:
-        evidence.append({
-            "control_id": control["id"],
-            "control_name": control["name"],
-            "status": control.get("status", "active"),
-            "effectiveness": control.get("effectiveness", 80),
+    incidents = await db.incidents.find({"tenant_id": tenant_id, "framework": framework}, {"_id": 0}).to_list(20)
+
+    evidence = [
+        {
+            "control_id": c["id"],
+            "control_name": c["name"],
+            "status": c.get("status", "active"),
+            "effectiveness": c.get("effectiveness", 80),
             "evidence_type": "automated_scan",
             "collected_at": datetime.now(timezone.utc).isoformat()
-        })
-    
-    findings = [
-        {"type": "gap", "description": "Missing encryption on backup storage", "severity": "medium"},
-        {"type": "improvement", "description": "Access review process needs documentation", "severity": "low"}
+        }
+        for c in controls
     ]
-    
+
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if api_key and controls:
+        try:
+            system_msg = """You are an audit evidence reporting agent.
+Generate realistic compliance audit findings for an evidence package.
+Return ONLY valid JSON:
+{
+  "findings": [
+    {
+      "type": "gap|improvement|strength|critical",
+      "description": "specific finding description",
+      "severity": "critical|high|medium|low",
+      "affected_control": "control name or null",
+      "remediation": "specific recommended action",
+      "evidence_reference": "what evidence supports this finding"
+    }
+  ],
+  "overall_assessment": "one paragraph summary",
+  "audit_readiness_score": 0,
+  "key_gaps": ["gap 1", "gap 2"],
+  "strengths": ["strength 1"]
+}"""
+            user_msg = f"""Generate audit evidence findings for {framework}:
+
+Controls ({len(controls)}): {json.dumps([{k: v for k, v in c.items() if k in ['name','status','effectiveness']} for c in controls[:10]])}
+Incidents ({len(incidents)}): {json.dumps([{k: v for k, v in i.items() if k in ['title','severity','status']} for i in incidents[:5]])}
+
+Generate 4-6 realistic audit findings. Return valid JSON."""
+
+            from emergentintegrations.llm.chat import LlmChat, UserMessage
+            chat = LlmChat(api_key=api_key, session_id=f"evidence-{package_id}", system_message=system_msg).with_model("gemini", "gemini-3-flash-preview")
+            response_text = await chat.send_message(UserMessage(text=user_msg))
+            ai_result = extract_json_from_text(response_text)
+            findings = ai_result.get("findings", [])
+        except Exception as e:
+            logger.error(f"AI evidence generation error: {e}")
+            findings = [
+                {"type": "gap", "description": "Backup storage encryption not fully documented", "severity": "medium", "remediation": "Document and verify encryption for all backup systems"},
+                {"type": "improvement", "description": "Access review cycle needs formal scheduling", "severity": "low", "remediation": "Establish quarterly access review cadence"}
+            ]
+    else:
+        findings = [
+            {"type": "gap", "description": "Backup storage encryption not fully documented", "severity": "medium", "remediation": "Document and verify encryption for all backup systems"},
+            {"type": "improvement", "description": "Access review cycle needs formal scheduling", "severity": "low", "remediation": "Establish quarterly access review cadence"}
+        ]
+
     await db.evidence_packages.update_one(
         {"id": package_id},
         {"$set": {
@@ -995,6 +1467,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def auto_seed_demo():
+    """When using in-memory mock DB, seed a demo user + compliance data on startup."""
+    if not _USING_MOCK_DB:
+        return
+    existing = await db.users.find_one({"email": "admin@compliancepulse.demo"})
+    if existing:
+        return
+    demo_tenant = "tenant_visa_demo"
+    pw_hash = bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode()
+    await db.users.insert_one({
+        "id": str(uuid.uuid4()), "tenant_id": demo_tenant,
+        "email": "admin@compliancepulse.demo", "name": "Demo Admin",
+        "password": pw_hash, "role": "admin",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await seed_tenant_data(demo_tenant)
+    logger.info("Auto-seeded demo data (in-memory mode)")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
