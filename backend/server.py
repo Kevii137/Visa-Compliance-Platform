@@ -700,7 +700,7 @@ async def chat_assistant(message: ChatMessage, current_user: dict = Depends(get_
     """AI-powered compliance chat assistant"""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
     
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="LLM API key not configured")
     
@@ -803,7 +803,7 @@ async def analyze_regulatory_conflicts(current_user: dict = Depends(get_current_
     if len(regulations) < 2:
         return {"conflicts": [], "total_conflicts": 0, "analysis_summary": "Add more regulations to detect conflicts."}
 
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="LLM API key not configured")
 
@@ -877,7 +877,7 @@ async def decompose_regulation(regulation_id: str, current_user: dict = Depends(
     if not regulation:
         raise HTTPException(status_code=404, detail="Regulation not found")
 
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="LLM API key not configured")
 
@@ -958,7 +958,7 @@ async def get_predictive_insights(refresh: bool = False, current_user: dict = De
             except Exception:
                 pass
 
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return _mock_insights()
 
@@ -1106,7 +1106,7 @@ async def process_agent_task(task_id: str, tenant_id: str):
     agent_type = task["agent_type"]
     description = task["description"]
 
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
 
     try:
         regulations = await db.regulations.find({"tenant_id": tenant_id}, {"_id": 0, "name": 1, "framework": 1, "description": 1, "version": 1}).to_list(20)
@@ -1283,7 +1283,7 @@ async def generate_evidence_package_async(package_id: str, tenant_id: str, frame
         for c in controls
     ]
 
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if api_key and controls:
         try:
             system_msg = """You are an audit evidence reporting agent.
