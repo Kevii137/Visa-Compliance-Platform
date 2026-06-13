@@ -175,7 +175,7 @@ The backend exposes a REST API under `/api`, including:
 Full interactive documentation is available at `/docs` (Swagger UI) once the backend is
 running.
 
-## Notes on AI Integration
+## Notes on AI Integration : 
 
 AI-powered features (the chat assistant, conflict analysis, evidence generation, etc.)
 use Google's Gemini models via a small local compatibility shim
