@@ -1,22 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import mockClient from '../mocks/mockClient';
-import { DEMO_USER } from '../mocks/mockData';
 
 const AuthContext = createContext(null);
 
-// Static demo mode (GitHub Pages build): no backend — serve in-memory mock data
-// and auto-authenticate as the demo admin so every page is reachable.
-const DEMO = process.env.REACT_APP_DEMO_MODE === 'true';
 const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(DEMO ? DEMO_USER : null);
-  const [token, setToken] = useState(DEMO ? 'demo-token' : localStorage.getItem('token'));
-  const [loading, setLoading] = useState(!DEMO);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [loading, setLoading] = useState(true);
 
   const api = useCallback(() => {
-    if (DEMO) return mockClient;
     return axios.create({
       baseURL: API_URL,
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -24,7 +18,6 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   useEffect(() => {
-    if (DEMO) return;
     const fetchUser = async () => {
       if (token) {
         try {
