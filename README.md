@@ -5,6 +5,14 @@ organizations. It centralizes regulations, controls, incidents, alerts, and audi
 and layers an AI assistant and "agentic" workflows on top to help compliance teams monitor
 risk, detect conflicting requirements, and generate evidence packages.
 
+> **🔴 Live demo:** https://kevii137.github.io/Visa-Compliance-Platform/
+>
+> The live site is a **static, front-end-only demo** deployed to GitHub Pages. Because
+> GitHub Pages can't run the Python/FastAPI backend, the demo build runs with
+> `REACT_APP_DEMO_MODE=true`, which serves realistic in-memory sample data
+> (`frontend/src/mocks/`) and auto-signs-in as a demo admin. Changes made in the demo are
+> not persisted. To run the full stack with a real backend, see the setup section below.
+
 ## Features
 
 - **Dashboard** — at-a-glance compliance score, open alerts/incidents, and risk trends

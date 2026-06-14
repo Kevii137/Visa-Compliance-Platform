@@ -1,6 +1,6 @@
 import "@/App.css";
 import "@/index.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { Toaster } from "./components/ui/sonner";
 
@@ -107,9 +107,9 @@ function App() {
   return (
     <div className="App dark">
       <AuthProvider>
-        <BrowserRouter>
+        <HashRouter>
           <AppRoutes />
-        </BrowserRouter>
+        </HashRouter>
         <Toaster position="top-right" richColors />
       </AuthProvider>
     </div>
