@@ -181,4 +181,4 @@ AI-powered features (the chat assistant, conflict analysis, evidence generation,
 use Google's Gemini models via a small local compatibility shim
 (`backend/emergentintegrations/`). These features require a valid `GEMINI_API_KEY`
 (a Gemini API key) to be set in `backend/.env`; without it, those endpoints will return
-an error but the rest of the application will work normally.
+an error but the rest of the application will end up working normally.
